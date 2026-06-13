@@ -13,6 +13,7 @@ class LDLZ_Plugin {
     const OPT       = 'ldlz_options';
     const STATE_KEY = 'ldlz_oauth_state_';
     const TYPE      = 'linuxdo'; // 第三方类型标识，所有 user_meta 都以 oauth_linuxdo_* 形式保存，与子比保持一致
+    const VERSION   = '1.1.0';   // 与插件头部 Version 保持一致，用于前台资源版本号
 
     public static function init() {
         add_action('admin_menu',       [__CLASS__, 'admin_menu']);
@@ -275,19 +276,14 @@ class LDLZ_Plugin {
      *  Linux DO 用户信息标准化
      * ============================================================ */
     private static function normalize_user($info) {
-        $data     = $info['data'] ?? $info['user'] ?? $info;
-        $id       = $data['id']       ?? $data['sub']        ?? $data['uid']        ?? $data['user_id'] ?? '';
-        $username = $data['username'] ?? $data['login']      ?? $data['name']       ?? $data['nickname'] ?? '';
-        $name     = $data['name']     ?? $data['nickname']   ?? $data['display_name'] ?? $username;
-        $email    = $data['email']    ?? '';
-        $avatar   = $data['avatar']   ?? $data['avatar_url'] ?? $data['picture']    ?? '';
+        $data   = $info['data'] ?? $info['user'] ?? $info;
+        $id     = $data['id']     ?? $data['sub']        ?? $data['uid']         ?? $data['user_id'] ?? '';
+        $name   = $data['name']   ?? $data['nickname']   ?? $data['display_name'] ?? $data['username'] ?? $data['login'] ?? '';
+        $avatar = $data['avatar'] ?? $data['avatar_url'] ?? $data['picture']     ?? '';
         return [
-            'id'       => (string) $id,
-            'username' => (string) $username,
-            'name'     => (string) $name,
-            'email'    => (string) $email,
-            'avatar'   => (string) $avatar,
-            'raw'      => $info,
+            'id'     => (string) $id,
+            'name'   => (string) $name,
+            'avatar' => (string) $avatar,
         ];
     }
 
@@ -299,11 +295,11 @@ class LDLZ_Plugin {
         $start = rest_url('linuxdo-login/v1/start');
         $logo  = plugin_dir_url(__FILE__) . 'assets/linuxdo-logo.jpg';
 
-        wp_register_style('ldlz-style', false, [], '1.1.0');
+        wp_register_style('ldlz-style', false, [], self::VERSION);
         wp_enqueue_style('ldlz-style');
         wp_add_inline_style('ldlz-style', self::css($logo));
 
-        wp_register_script('ldlz-script', '', [], '1.1.0', true);
+        wp_register_script('ldlz-script', '', [], self::VERSION, true);
         wp_enqueue_script('ldlz-script');
         wp_add_inline_script('ldlz-script',
             'window.LDLZ=' . wp_json_encode([

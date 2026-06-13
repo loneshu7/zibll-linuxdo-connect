@@ -1,6 +1,6 @@
 # zibll-linuxdo-connect
 
-> 子比子主题（Zibll）× Linux DO OAuth 登录集成插件
+> 子比主题（Zibll）× Linux DO OAuth 登录集成插件
 
 [![WordPress](https://img.shields.io/badge/WordPress-5.8%2B-blue?logo=wordpress)](https://wordpress.org)
 [![PHP](https://img.shields.io/badge/PHP-7.4%2B-purple?logo=php)](https://php.net)
@@ -12,6 +12,8 @@
 
 `zibll-linuxdo-connect` 是一个为 **子比（Zibll）主题** 量身定制的功能扩展插件，通过 **Linux DO** 社区的 OAuth 2.0 接口，让用户可以直接使用 Linux DO 账号登录你的 WordPress 站点。
 
+插件会把 Linux DO 登录完整对接到子比主题自带的「第三方登录」体系：新用户是「自动创建」还是「自行绑定 / 创建」，完全跟随子比主题后台的「新用户绑定模式」开关，无需在本插件里重复设置。
+
 适合以 Linux DO 社区为目标用户群的个人博客或技术站点使用。
 
 ---
@@ -20,9 +22,9 @@
 
 - ✅ 一键通过 Linux DO 账号登录 / 注册
 - ✅ 自动同步用户昵称、头像
-- ✅ 与子比主题登录弹窗无缝集成
-- ✅ 支持绑定已有 WordPress 账号
-- ✅ 登录按钮自动注入，无需修改主题模板
+- ✅ 与子比主题登录弹窗无缝集成，登录按钮自动注入，无需修改主题模板
+- ✅ 已登录用户可绑定 / 解绑 Linux DO 账号（复用子比的绑定面板）
+- ✅ 同时在 WordPress 原生登录页（wp-login.php）注入登录入口
 
 ---
 
@@ -34,6 +36,8 @@
 | PHP | 7.4 + |
 | 子比主题（Zibll） | 最新版 |
 | Linux DO OAuth 应用 | 需自行申请 |
+
+> 本插件依赖子比主题的 `zib_oauth_update_user()` 等核心函数，未安装子比主题时第三方登录将无法工作。
 
 ---
 
@@ -49,7 +53,7 @@
 
 ```bash
 cd wp-content/plugins/
-git clone https://github.com/your-username/zibll-linuxdo-connect.git
+git clone https://github.com/loneshu7/zibll-linuxdo-connect.git
 ```
 
 然后在 WordPress 后台启用插件。
@@ -60,9 +64,12 @@ git clone https://github.com/your-username/zibll-linuxdo-connect.git
 
 ### 第一步：申请 Linux DO OAuth 应用
 
-1. 前往 [Linux DO 开发者后台](https://connect.linux.do) 创建应用
-2. 回调地址填写：`https://你的域名/wp-json/linuxdo/v1/callback`
+1. 前往 [Linux DO Connect](https://connect.linux.do) 创建应用
+2. 回调地址（Redirect URI）填写：
+   `https://你的域名/wp-json/linuxdo-login/v1/callback`
 3. 获取 `Client ID` 和 `Client Secret`
+
+> 后台设置页顶部会直接显示当前站点对应的回调地址，复制粘贴即可，无需手动拼接。
 
 ### 第二步：填写插件设置
 
@@ -73,47 +80,45 @@ Client ID:     xxxxxxxxxxxxxxxx
 Client Secret: xxxxxxxxxxxxxxxx
 ```
 
+其余的授权地址 / Token 地址 / 用户信息地址 / Scope / 按钮标题均有默认值，一般无需改动。
+
 ### 第三步：检查子比主题集成
 
-插件会自动在子比主题的登录弹窗底部注入「Linux DO 登录」按钮，无需额外操作。
+插件会自动在子比主题的登录弹窗（`.social_loginbar`）中注入「Linux DO 登录」按钮，无需额外操作。
 
-如需手动放置按钮，可使用短代码：
-
-```
-[linuxdo_login_button]
-```
+新用户的处理方式由子比主题决定，前往：
+**子比主题设置 → 用户&互动 → 第三方登录 → 新用户绑定模式**
+- `自动创建新用户`：首次登录自动注册并登录
+- `用户自行绑定或创建新用户`：跳转到绑定页，由用户手动绑定已有账号或创建新账号
 
 ---
 
-## 目录结构
+## 工作原理
 
-```
-zibll-linuxdo-connect/
-├── zibll-linuxdo-connect.php   # 插件入口
-├── includes/
-│   ├── oauth.php               # OAuth 流程处理
-│   ├── user.php                # 用户创建 / 绑定逻辑
-│   └── hooks.php               # 子比主题钩子注入
-├── assets/
-│   ├── css/style.css           # 按钮样式
-│   └── js/login.js             # 前端交互
-├── templates/
-│   └── login-button.php        # 登录按钮模板
-└── README.md
-```
+整个插件是单文件实现（`zibll-linuxdo-connect.php`），主要逻辑如下：
+
+- 注册两个 REST 路由：
+  - `GET /wp-json/linuxdo-login/v1/start` —— 发起授权，跳转到 Linux DO
+  - `GET /wp-json/linuxdo-login/v1/callback` —— 接收回调，换取 token、拉取用户信息
+- 用 `state`（transient，10 分钟有效）防 CSRF 并保存登录前地址
+- 拉到用户信息后标准化为子比要求的 `oauth_data`，交给 `zib_oauth_update_user()` 完成登录 / 绑定 / 注册
+- 前台样式与脚本均为内联注入，按钮样式基于 `assets/linuxdo-logo.jpg`
 
 ---
 
 ## 常见问题
 
-**Q: 登录后头像不显示？**  
+**Q: 登录后头像不显示？**
 A: 请确认子比主题版本为最新，部分旧版本不支持外部头像源。
 
-**Q: 回调地址报 404？**  
+**Q: 回调地址报 404？**
 A: 进入 WordPress 后台 → 设置 → 固定链接，点一次「保存更改」刷新重写规则。
 
-**Q: 已有账号能绑定 Linux DO 吗？**  
-A: 可以。在已登录状态下点击「绑定 Linux DO」即可完成关联。
+**Q: 已有账号能绑定 Linux DO 吗？**
+A: 可以。在已登录状态下，通过子比的第三方账号绑定面板即可完成关联。
+
+**Q: 回调一直提示「登录状态已过期」？**
+A: `state` 有效期为 10 分钟，请在发起登录后尽快完成授权；若服务器时间异常或 transient 被频繁清理也可能导致此问题。
 
 ---
 
