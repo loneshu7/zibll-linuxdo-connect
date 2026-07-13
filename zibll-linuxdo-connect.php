@@ -153,9 +153,9 @@ class LDLZ_Plugin {
         }
 
         // 启用 session，让子比读取 oauth_rurl
-        if (!session_id()) @session_start();
+        self::maybe_start_session();
 
-        $redirect_to = esc_url_raw($req->get_param('redirect_to') ?: home_url('/'));
+        $redirect_to = self::safe_redirect_url($req->get_param('redirect_to'));
 
         // 保存子比绑定页跳转回的地址（与子比 github/login.php 中行为一致）
         $_SESSION['oauth_rurl'] = $redirect_to;
@@ -200,9 +200,14 @@ class LDLZ_Plugin {
         if (is_wp_error($token_resp)) {
             return self::error_page('获取 Token 失败：' . $token_resp->get_error_message());
         }
-        $token = json_decode(wp_remote_retrieve_body($token_resp), true);
-        if (empty($token['access_token'])) {
-            return self::error_page('Linux DO 未返回 access_token：' . wp_remote_retrieve_body($token_resp));
+        $token_body = wp_remote_retrieve_body($token_resp);
+        if (wp_remote_retrieve_response_code($token_resp) < 200 || wp_remote_retrieve_response_code($token_resp) >= 300) {
+            return self::error_page('获取 Token 失败：Linux DO 返回 HTTP ' . wp_remote_retrieve_response_code($token_resp));
+        }
+
+        $token = json_decode($token_body, true);
+        if (!is_array($token) || empty($token['access_token'])) {
+            return self::error_page('Linux DO 未返回有效 access_token。');
         }
 
         // 2) 拉取用户信息
@@ -216,6 +221,10 @@ class LDLZ_Plugin {
         if (is_wp_error($user_resp)) {
             return self::error_page('获取用户信息失败：' . $user_resp->get_error_message());
         }
+        if (wp_remote_retrieve_response_code($user_resp) < 200 || wp_remote_retrieve_response_code($user_resp) >= 300) {
+            return self::error_page('获取用户信息失败：Linux DO 返回 HTTP ' . wp_remote_retrieve_response_code($user_resp));
+        }
+
         $info = json_decode(wp_remote_retrieve_body($user_resp), true);
         if (!$info || !is_array($info)) {
             return self::error_page('Linux DO 用户信息解析失败。');
@@ -228,7 +237,7 @@ class LDLZ_Plugin {
         }
 
         // 4) 启用 session 并保存返回地址（子比 oauth_rurl 机制）
-        if (!session_id()) @session_start();
+        self::maybe_start_session();
         if (empty($_SESSION['oauth_rurl'])) {
             $_SESSION['oauth_rurl'] = $redirect_to;
         }
@@ -268,8 +277,27 @@ class LDLZ_Plugin {
 
         // auto 模式：登录成功后，优先用 session 里的 oauth_rurl，再退到子比的 redirect_url
         $rurl = !empty($_SESSION['oauth_rurl']) ? $_SESSION['oauth_rurl'] : ($result['redirect_url'] ?: home_url('/'));
-        wp_safe_redirect($rurl);
+        wp_safe_redirect(self::safe_redirect_url($rurl));
         exit;
+    }
+
+
+    /**
+     * 启动 PHP session，避免重复调用和因 headers 已发送导致的警告。
+     */
+    private static function maybe_start_session() {
+        if (session_status() === PHP_SESSION_ACTIVE || headers_sent()) {
+            return;
+        }
+        session_start();
+    }
+
+    /**
+     * 只允许跳转回本站 URL，避免 redirect_to 被构造为开放重定向。
+     */
+    private static function safe_redirect_url($url) {
+        $url = is_string($url) ? $url : '';
+        return wp_validate_redirect(esc_url_raw($url), home_url('/'));
     }
 
     /* ============================================================
